@@ -42,12 +42,11 @@
     <p>Click on Earth to set impact target.</p>
   </div>
   
-  <!-- Load Three.js and OrbitControls from CDNs -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
-  
-  <script>
-    // ----- Global Variables & Setup -----
+  <!-- Use module scripts to import Three.js and OrbitControls correctly -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js';
+
     let scene, camera, renderer, controls;
     let earth, clouds;
     let raycaster, mouse;
@@ -66,48 +65,37 @@
       meteorSizeDisplay.textContent = meteorSizeSlider.value;
     });
 
-    // Initialize scene, camera, lights, and objects.
     init();
     animate();
 
     function init() {
-      // Scene & Camera
       scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
       camera.position.set(0, 0, 150);
-      
-      // Renderer
+
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
 
-      // Orbit Controls for user interaction
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      // Use OrbitControls imported as a module.
+      controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
-      
-      // Lights
+
+      // Lighting
       const ambientLight = new THREE.AmbientLight(0x333333);
       scene.add(ambientLight);
-      
       const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
       directionalLight.position.set(100, 50, 100);
       scene.add(directionalLight);
 
-      // Raycaster & mouse for picking
       raycaster = new THREE.Raycaster();
       mouse = new THREE.Vector2();
 
-      // Create Hyper‑Realistic Earth
       createEarth();
 
-      // Listen for window resize
       window.addEventListener("resize", onWindowResize, false);
-      
-      // Listen for mouse clicks (for impact target)
       renderer.domElement.addEventListener("click", onMouseClick, false);
-      
-      // UI: Send Meteor button
       sendMeteorButton.addEventListener("click", launchMeteor, false);
     }
 
@@ -117,17 +105,15 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    // ----- Creating the Hyper‑Realistic Earth -----
+    // Create Earth with high‑resolution textures.
     function createEarth() {
       const loader = new THREE.TextureLoader();
+      // Alternative texture URLs hosted by threejs.org
+      const earthTexture = loader.load("https://threejs.org/examples/textures/earth_atmos_2048.jpg");
+      const bumpTexture  = loader.load("https://threejs.org/examples/textures/earth_bump_2048.jpg");
+      const specularTexture = loader.load("https://threejs.org/examples/textures/earth_specular_2048.jpg");
+      const cloudTexture = loader.load("https://threejs.org/examples/textures/earth_clouds_2048.png");
 
-      // High resolution textures from a public repository (4K maps)
-      const earthTexture = loader.load("https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg");
-      const bumpTexture  = loader.load("https://raw.githubusercontent.com/turban/webgl-earth/master/images/elev_bump_4k.jpg");
-      const specularTexture = loader.load("https://raw.githubusercontent.com/turban/webgl-earth/master/images/water_4k.png");
-      const cloudTexture = loader.load("https://raw.githubusercontent.com/turban/webgl-earth/master/images/fair_clouds_4k.png");
-
-      // Create Earth sphere geometry
       const earthGeometry = new THREE.SphereGeometry(50, 128, 128);
       const earthMaterial = new THREE.MeshPhongMaterial({
         map: earthTexture,
@@ -139,7 +125,6 @@
       earth = new THREE.Mesh(earthGeometry, earthMaterial);
       scene.add(earth);
 
-      // Create cloud layer (slightly larger sphere)
       const cloudGeometry = new THREE.SphereGeometry(50.5, 128, 128);
       const cloudMaterial = new THREE.MeshLambertMaterial({
         map: cloudTexture,
@@ -151,66 +136,47 @@
       scene.add(clouds);
     }
 
-    // ----- Raycasting to Pick an Impact Point on Earth -----
+    // Raycasting to pick an impact point on Earth.
     function onMouseClick(event) {
-      // Normalize mouse coordinates
       mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
       mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
       
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObject(earth);
       if (intersects.length > 0) {
-        // Record the first intersection point as the target.
         targetPoint = intersects[0].point.clone();
-        // Optionally, add a temporary marker (a small glowing sphere)
         addImpactMarker(targetPoint);
       }
     }
     
     function addImpactMarker(position) {
-      // Create a short‑lived marker
       const markerGeometry = new THREE.SphereGeometry(1, 16, 16);
       const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
       marker.position.copy(position);
       scene.add(marker);
-      // Remove marker after 2 seconds.
-      setTimeout(() => {
-        scene.remove(marker);
-      }, 2000);
+      setTimeout(() => { scene.remove(marker); }, 2000);
     }
 
-    // ----- Launching the Meteor -----
+    // Launch the meteor from a point outside Earth toward the impact target.
     function launchMeteor() {
-      if (!targetPoint || meteor) return; // require an impact target and only one meteor at a time
-      
-      // Get meteor size from UI slider.
+      if (!targetPoint || meteor) return;
       const size = parseFloat(meteorSizeSlider.value);
       
-      // Compute the incoming direction:
-      // Since Earth is centered at (0,0,0) and targetPoint lies on its surface,
-      // the inward (impact) direction is opposite the surface normal.
       const normal = targetPoint.clone().normalize();
-      const offset = 100;  // distance from the surface where the meteor starts
+      const offset = 100;
       const startPoint = targetPoint.clone().sub(normal.clone().multiplyScalar(offset));
       
-      // Define a control point for a curved (arc) trajectory.
-      // We take the midpoint and add an offset perpendicular to the impact direction.
       const midPoint = new THREE.Vector3().addVectors(startPoint, targetPoint).multiplyScalar(0.5);
       let up = new THREE.Vector3(0, 1, 0);
-      // Avoid collinearity if normal is nearly vertical.
-      if (Math.abs(normal.dot(up)) > 0.95) {
-        up = new THREE.Vector3(1, 0, 0);
-      }
+      if (Math.abs(normal.dot(up)) > 0.95) { up = new THREE.Vector3(1, 0, 0); }
       const perpendicular = new THREE.Vector3().crossVectors(normal, up).cross(normal).normalize();
-      const arcHeight = 50; // height of the arc
+      const arcHeight = 50;
       const controlPoint = midPoint.clone().add(perpendicular.multiplyScalar(arcHeight));
       
-      // Create a quadratic Bezier curve for the meteor path.
       meteorCurve = new THREE.QuadraticBezierCurve3(startPoint, controlPoint, targetPoint);
       meteorProgress = 0;
       
-      // Create the meteor mesh.
       const meteorGeometry = new THREE.SphereGeometry(size, 32, 32);
       const meteorMaterial = new THREE.MeshBasicMaterial({
         color: 0xff5500,
@@ -221,9 +187,8 @@
       scene.add(meteor);
     }
 
-    // ----- Explosion Effect -----
+    // Create an explosion effect at the impact position.
     function createExplosion(position, baseSize) {
-      // Create a sphere that will expand and fade.
       const explosionGeometry = new THREE.SphereGeometry(1, 32, 32);
       const explosionMaterial = new THREE.MeshBasicMaterial({
         color: 0xffaa00,
@@ -236,41 +201,33 @@
       scene.add(explosion);
       explosionTime = 0;
       
-      // Initiate camera shake
       cameraShake.intensity = 2 * baseSize;
-      cameraShake.duration = 0.5; // seconds
+      cameraShake.duration = 0.5;
       cameraShake.time = 0;
     }
 
-    // ----- Main Animation Loop -----
+    // Main animation loop.
     function animate() {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
       
-      // Rotate Earth & Clouds slowly
       earth.rotation.y += 0.001;
       clouds.rotation.y += 0.0012;
-      
-      // Update controls
       controls.update();
       
-      // If a meteor is active, move it along its path.
       if (meteor && meteorCurve) {
-        meteorProgress += delta / 1.5; // meteor flight lasts ~1.5 seconds
+        meteorProgress += delta / 1.5;
         if (meteorProgress >= 1) {
           meteorProgress = 1;
-          // Impact reached – remove meteor and trigger explosion.
           const impactPosition = meteorCurve.getPoint(1);
           scene.remove(meteor);
           meteor = null;
           createExplosion(impactPosition, parseFloat(meteorSizeSlider.value));
         } else {
-          const pos = meteorCurve.getPoint(meteorProgress);
-          meteor.position.copy(pos);
+          meteor.position.copy(meteorCurve.getPoint(meteorProgress));
         }
       }
       
-      // Update explosion: expand and fade out.
       if (explosion) {
         explosionTime += delta;
         const scale = THREE.MathUtils.lerp(1, 20, explosionTime / 1);
@@ -282,7 +239,6 @@
         }
       }
       
-      // Apply camera shake if active.
       if (cameraShake.time < cameraShake.duration) {
         cameraShake.time += delta;
         const shakeFactor = (1 - cameraShake.time / cameraShake.duration) * cameraShake.intensity;
